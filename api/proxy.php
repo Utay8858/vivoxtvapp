@@ -1,10 +1,10 @@
 <?php
-$DEFAULT_REFERER = "https://patronvip32.cfd/";
-$DEFAULT_ORIGIN  = "https://patronvip32.cfd";
+$DEFAULT_REFERER = "https://taraftarium24bjk17.com/";
+$DEFAULT_ORIGIN  = "https://taraftarium24bjk17.com";
 $TIMEOUT         = 25;
 
 $SRC_MAP = [
-    'patron' => 'https://2i4.d72577a9dd0ec71.cfd/patron/mono.m3u8',
+    'zirve' => 'https://19x.t24hls11.cfd/zirve/mono.m3u8',
 ];
 
 header("Access-Control-Allow-Origin: *");
@@ -31,7 +31,7 @@ function forwardXHeaders() {
 function buildHeaders($referer, $origin, $range = null) {
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
     if (strlen($ua) < 15) {
-        $ua = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+        $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
     }
     $h = [
         "User-Agent: " . $ua,
@@ -115,13 +115,11 @@ $baseUrl = "$scheme://$host";
 if ($action === 'ts') {
     $range = $_SERVER['HTTP_RANGE'] ?? null;
     $res = curlFetch($target, buildHeaders($ref, $orig, $range), $range);
-
     if ($res['status'] < 200 || $res['status'] >= 400) {
         http_response_code($res['status'] ?: 502);
         header("Content-Type: text/plain");
         echo "Upstream {$res['status']}"; exit;
     }
-
     http_response_code($range ? 206 : 200);
     header("Content-Type: video/mp2t");
     header("Accept-Ranges: bytes");
@@ -139,55 +137,45 @@ if ($action === 'hls') {
         header("Content-Type: text/plain");
         echo "Upstream {$res['status']}"; exit;
     }
-
     $text = ltrim($res['body'], "\xEF\xBB\xBF \t\n\r");
     if (strpos($text, '#EXTM3U') !== 0) {
         header("Content-Type: text/plain");
         echo "Not a manifest"; exit;
     }
-
     $p = parse_url($target);
     $baseOrigin = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '')
                 . (isset($p['port']) ? ':' . $p['port'] : '');
     $basePath = $p['path'] ?? '/';
     $baseDir  = substr($basePath, 0, strrpos($basePath, '/') + 1);
-
     $segRef  = $baseOrigin . '/';
     $segOrig = $baseOrigin;
-
-    $segQS = '&referer=' . urlencode($segRef)
-           . '&origin='  . urlencode($segOrig);
-
+    $segQS = '&referer=' . urlencode($segRef) . '&origin=' . urlencode($segOrig);
     $out = [];
     foreach (explode("\n", $text) as $line) {
         $t = rtrim($line, "\r\n");
         if ($t === '') { $out[] = ''; continue; }
-
         if ($t[0] === '#') {
             if (strpos($t, 'URI="') !== false) {
                 $t = preg_replace_callback('/URI="([^"]+)"/',
                     function($m) use ($baseOrigin,$baseDir,$baseUrl,$segQS) {
                         $abs = makeAbsolute($m[1], $baseOrigin, $baseDir);
                         if (isManifest($abs)) {
-                            return 'URI="' . $baseUrl . '/play.m3u8?url=' . urlencode($abs) . $segQS . '"';
+                            return 'URI="' . $baseUrl . '/?action=hls&url=' . urlencode($abs) . $segQS . '"';
                         } else {
-                            return 'URI="' . $baseUrl . '/seg.ts?url='    . urlencode($abs) . $segQS . '"';
+                            return 'URI="' . $baseUrl . '/?action=ts&url=' . urlencode($abs) . $segQS . '"';
                         }
                     }, $t);
             }
             $out[] = $t; continue;
         }
-
         $abs = makeAbsolute($t, $baseOrigin, $baseDir);
         if (isManifest($abs)) {
-            $out[] = $baseUrl . '/play.m3u8?url=' . urlencode($abs) . $segQS;
+            $out[] = $baseUrl . '/?action=hls&url=' . urlencode($abs) . $segQS;
         } else {
-            $out[] = $baseUrl . '/seg.ts?url='    . urlencode($abs) . $segQS;
+            $out[] = $baseUrl . '/?action=ts&url='  . urlencode($abs) . $segQS;
         }
     }
-
     $manifest = implode("\r\n", $out) . "\r\n";
-
     header("Content-Type: application/vnd.apple.mpegurl");
     header("Content-Length: " . strlen($manifest));
     header("Cache-Control: no-cache, no-store");
@@ -197,7 +185,10 @@ if ($action === 'hls') {
 if ($action === 'debug') {
     $res = curlFetch($target, buildHeaders($ref, $orig));
     header("Content-Type: text/plain; charset=utf-8");
-    echo "Status: {$res['status']}\nType: {$res['contentType']}\nError: {$res['error']}\n\n";
+    echo "Status: {$res['status']}\n";
+    echo "Type: {$res['contentType']}\n";
+    echo "Ref: {$ref}\n";
+    echo "Error: {$res['error']}\n\n";
     echo substr($res['body'], 0, 1500);
     exit;
 }
