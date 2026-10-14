@@ -1,5 +1,5 @@
 /* ============================================================
-   VivoX Universal Proxy — Vercel Node.js
+   VivoX Universal Proxy — Vercel Node.js (Ham URL destekli)
    ============================================================ */
 
 const MASKED = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"];
@@ -129,12 +129,46 @@ function rewriteManifest(text, target, proxyOrigin, usedRef, usedOrg) {
   return out.join("\n");
 }
 
+/* ------- Ham URL'yi query string'den çıkart ------- */
+function extractRawUrl(rawQuery) {
+  // rawQuery: "action=hls&url=https://...&referer=..."
+  // url= ile başlayan kısmı al, &referer= veya &origin= görene kadar
+  const idx = rawQuery.indexOf("url=");
+  if (idx === -1) return "";
+  let rest = rawQuery.substring(idx + 4);
+
+  // &referer= veya &origin= veya sonuna kadar kes
+  const cutRef = rest.indexOf("&referer=");
+  const cutOrg = rest.indexOf("&origin=");
+  let cut = rest.length;
+  if (cutRef !== -1) cut = Math.min(cut, cutRef);
+  if (cutOrg !== -1) cut = Math.min(cut, cutOrg);
+
+  let url = rest.substring(0, cut);
+
+  // Eğer encode edilmişse decode et
+  try { url = decodeURIComponent(url); } catch (e) { /* ham kalsın */ }
+  return url;
+}
+
 module.exports = async function handler(req, res) {
-  const u = new URL(req.url, `https://${req.headers.host}`);
+  const hostHeader = req.headers.host || "vivoxtvapp.vercel.app";
+  const fullUrl = `https://${hostHeader}${req.url}`;
+  const u = new URL(fullUrl);
+
   const action = u.searchParams.get("action") || "";
-  const target = u.searchParams.get("url") || "";
   const customRef = u.searchParams.get("referer") || "";
   const customOrg = u.searchParams.get("origin")  || "";
+
+  /* ---- URL parametresini al ---- */
+  let target = u.searchParams.get("url") || "";
+
+  /* Ham URL geldiyse (encode edilmemiş), düzelt */
+  if (!target || !/^https?:\/\//i.test(target)) {
+    const raw = req.url || "";
+    const extracted = extractRawUrl(raw);
+    if (extracted) target = extracted;
+  }
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
@@ -144,7 +178,9 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
 
   if (action === "health") return res.status(200).send("OK");
-  if (!target) return res.status(400).send("Missing ?url=");
+  if (!target || !/^https?:\/\//i.test(target)) {
+    return res.status(400).send("Missing or invalid ?url=");
+  }
 
   const reqHeaders = {
     range:  req.headers.range,
@@ -161,7 +197,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).send(text);
     }
 
-    const rewritten = rewriteManifest(text, target, `https://${req.headers.host}`, plan.ref, plan.org);
+    const rewritten = rewriteManifest(text, target, `https://${hostHeader}`, plan.ref, plan.org);
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Proxy-Referer", plan.ref || "(none)");
